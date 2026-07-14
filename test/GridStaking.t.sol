@@ -3,53 +3,51 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {GridStaking} from "../src/GridStaking.sol";
+import {MockERC20} from "./MockERC20.sol";
 
 contract GridStakingTest is Test {
     GridStaking internal staking;
+    MockERC20 internal grid;
     address internal staker = address(0xCAFE);
 
     function setUp() public {
-        staking = new GridStaking();
+        grid = new MockERC20();
+        staking = new GridStaking(address(grid));
+        grid.mint(staker, 10 ether);
     }
 
     function test_deposit() public {
-        vm.deal(staker, 1 ether);
-        vm.prank(staker);
-        staking.deposit{value: 0.5 ether}();
+        vm.startPrank(staker);
+        grid.approve(address(staking), 0.5 ether);
+        staking.deposit(0.5 ether);
+        vm.stopPrank();
 
         assertEq(staking.staked(staker), 0.5 ether);
         assertEq(staking.totalStaked(), 0.5 ether);
-    }
-
-    function test_receive() public {
-        vm.deal(staker, 1 ether);
-        vm.prank(staker);
-        (bool ok,) = address(staking).call{value: 0.25 ether}("");
-        assertTrue(ok);
-        assertEq(staking.staked(staker), 0.25 ether);
+        assertEq(grid.balanceOf(address(staking)), 0.5 ether);
     }
 
     function test_withdraw() public {
-        vm.deal(staker, 1 ether);
-        vm.prank(staker);
-        staking.deposit{value: 0.5 ether}();
+        vm.startPrank(staker);
+        grid.approve(address(staking), 0.5 ether);
+        staking.deposit(0.5 ether);
 
-        uint256 before = staker.balance;
-        vm.prank(staker);
+        uint256 before = grid.balanceOf(staker);
         staking.withdraw(0.2 ether);
+        vm.stopPrank();
 
         assertEq(staking.staked(staker), 0.3 ether);
         assertEq(staking.totalStaked(), 0.3 ether);
-        assertEq(staker.balance, before + 0.2 ether);
+        assertEq(grid.balanceOf(staker), before + 0.2 ether);
     }
 
     function test_withdraw_reverts_insufficient() public {
-        vm.deal(staker, 1 ether);
-        vm.prank(staker);
-        staking.deposit{value: 0.1 ether}();
+        vm.startPrank(staker);
+        grid.approve(address(staking), 0.1 ether);
+        staking.deposit(0.1 ether);
 
-        vm.prank(staker);
-        vm.expectRevert("Insufficient stake");
+        vm.expectRevert(GridStaking.InsufficientStake.selector);
         staking.withdraw(0.2 ether);
+        vm.stopPrank();
     }
 }

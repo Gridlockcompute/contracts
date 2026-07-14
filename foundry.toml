@@ -12,3 +12,4 @@ robinhood_mainnet = "https://rpc.mainnet.chain.robinhood.com"
 
 [etherscan]
 robinhood_testnet = { key = "${BLOCKSCOUT_API_KEY}", url = "https://explorer.testnet.chain.robinhood.com/api" }
+robinhood_mainnet = { key = "${BLOCKSCOUT_API_KEY}", url = "https://robinhoodchain.blockscout.com/api" }
