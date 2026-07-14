@@ -12,7 +12,7 @@ Solidity programs for [Gridlock](https://grid-lock.tech) on [Robinhood Chain](ht
 | `Attestation` | TEE / confidential-capability attestations |
 | `JobRouter` | Oracle-anchored job submit / complete / cancel (`EVM_JOB_ROUTER`) |
 | `FeeCollector` | Native ETH fee routing — 60% stakers / 20% workers / 10% burn / 10% treasury (`EVM_FEE_COLLECTOR`) |
-| `GridStaking` | Native ETH staking pool (`EVM_GRID_STAKING`) |
+| `GridStaking` | GRID ERC20 staking pool — approve + `deposit(uint256)` (`EVM_GRID_STAKING`) |
 | `GridlockGovernance` | Timelocked `FeeCollector` pool updates + `distributeFees` (`EVM_GOVERNANCE`) |
 
 > **Naming:** the on-chain type is `GridlockRegistry`. The router env var is `EVM_WORKER_REGISTRY` (historical alias).
@@ -31,75 +31,77 @@ Or inside this directory:
 forge build
 ```
 
-## Phased deploy (testnet or mainnet)
+## Phased deploy (mainnet)
 
-Set `ROBINHOOD_RPC` and fund the deployer wallet. Use Robinhood testnet (`46630`) for dry runs; mainnet is chain `4663`.
+Robinhood Chain mainnet is chain `4663`. Set `ROBINHOOD_RPC` and fund the deployer wallet with ETH for gas.
 
 | Phase | Script | Deploys |
 |-------|--------|---------|
 | 4a | `script/Deploy.s.sol` | `GridlockRegistry`, `Attestation` |
 | 4b | `script/DeployPhase4b.s.sol` | `FeeCollector`, `JobRouter` (needs `EVM_WORKER_REGISTRY`) |
-| 5 | `script/DeployPhase5.s.sol` | `GridStaking` |
+| 5 | `script/DeployPhase5.s.sol` | `GridStaking` (needs `EVM_GRID_TOKEN`) |
 | 6 | `script/DeployPhase6.s.sol` | `GridlockGovernance` (needs `EVM_FEE_COLLECTOR`, optional `GOVERNANCE_TIMELOCK_SEC`) |
 | Handoff | `script/DeployFeeCollectorHandoff.s.sol` | New `FeeCollector` with governance as `authority` |
 
-Example (testnet):
+Example — Phase 5 (GridStaking):
 
 ```bash
-export ROBINHOOD_RPC=https://rpc.testnet.chain.robinhood.com
+export ROBINHOOD_RPC=https://rpc.mainnet.chain.robinhood.com
+export EVM_GRID_TOKEN=0x62537c09a874cfe886e052d5afcd28356a98e549
 export PRIVATE_KEY=0x...
 
-forge script script/Deploy.s.sol --rpc-url $ROBINHOOD_RPC --broadcast
-
-export EVM_WORKER_REGISTRY=0x...   # from Deploy.s.sol output
-forge script script/DeployPhase4b.s.sol --rpc-url $ROBINHOOD_RPC --broadcast
-
-forge script script/DeployPhase5.s.sol --rpc-url $ROBINHOOD_RPC --broadcast
-
-export EVM_FEE_COLLECTOR=0x...     # from Phase 4b
-export GOVERNANCE_TIMELOCK_SEC=86400
-forge script script/DeployPhase6.s.sol --rpc-url $ROBINHOOD_RPC --broadcast
-
-export EVM_GOVERNANCE=0x...
-export EVM_GRID_STAKING=0x...
-forge script script/DeployFeeCollectorHandoff.s.sol --rpc-url $ROBINHOOD_RPC --broadcast
+forge script script/DeployPhase5.s.sol \
+  --rpc-url $ROBINHOOD_RPC \
+  --private-key $PRIVATE_KEY \
+  --broadcast
 ```
 
-Broadcast artifacts land in `broadcast/<Script>/<chainId>/`.
+Verify on [Blockscout](https://robinhoodchain.blockscout.com):
 
-### Robinhood testnet (46630) — latest recorded deploys
+```bash
+forge verify-contract <GRID_STAKING_ADDRESS> \
+  src/GridStaking.sol:GridStaking \
+  --chain-id 4663 \
+  --rpc-url $ROBINHOOD_RPC \
+  --verifier blockscout \
+  --verifier-url https://robinhoodchain.blockscout.com/api/ \
+  --etherscan-api-key unused \
+  --constructor-args $(cast abi-encode "constructor(address)" $EVM_GRID_TOKEN) \
+  --watch
+```
 
-| Contract | Address |
-|----------|---------|
-| GridlockRegistry | `0xbe5d140dfbe9b9efe91789a96c7769c52154ed84` |
-| Attestation | `0x00bceb696b6b8852e75a08789e4534fbddb5e46c` |
-| JobRouter | `0xc7c17d2780fb1d4632ca694fbeda54774f7a0225` |
-| FeeCollector (phase 4b) | `0x283828409b2a1892f359a9257e437c04c629f4d8` |
-| GridStaking | `0x9f4f924ed087e2acd68999899086d05bbe64f2b5` |
-| GridlockGovernance | `0x1710a4e88118ef37dbc9426d208bdd05d6a80bd5` |
-| FeeCollector (handoff) | `0x202194f58c89d44a8dae17031dbb0b75551c9571` |
+Broadcast artifacts land in `broadcast/<Script>/4663/` (gitignored).
 
-Use the **handoff** `FeeCollector` as the canonical address once governance is live.
+## Mainnet contract addresses (chain 4663)
 
-**Mainnet (4663):** not deployed yet — no `broadcast/*/4663/` artifacts.
+| Contract | Address | Status |
+|----------|---------|--------|
+| GRID token | [`0x62537c09a874cfe886e052d5afcd28356a98e549`](https://robinhoodchain.blockscout.com/address/0x62537c09a874cfe886e052d5afcd28356a98e549) | Live |
+| GridlockRegistry | [`0xC3F9E16d21F88DC5a7d89317EEC0e1c62206E1Cb`](https://robinhoodchain.blockscout.com/address/0xC3F9E16d21F88DC5a7d89317EEC0e1c62206E1Cb) | Live |
+| Attestation | [`0xD82dC78E2B2B079820E54513bEf4F6649c15b2dA`](https://robinhoodchain.blockscout.com/address/0xD82dC78E2B2B079820E54513bEf4F6649c15b2dA) | Live |
+| JobRouter | [`0xfEEa8b7b2B90CE699238c23a03f0607972150446`](https://robinhoodchain.blockscout.com/address/0xfEEa8b7b2B90CE699238c23a03f0607972150446) | Live |
+| FeeCollector | [`0x2604413db30ef67f28dc50e88daBfC89d6F1f4e0`](https://robinhoodchain.blockscout.com/address/0x2604413db30ef67f28dc50e88daBfC89d6F1f4e0) | Live (governance handoff) |
+| GridStaking | [`0x32C074317C86318f5a41137E64AEf611324CA9A9`](https://robinhoodchain.blockscout.com/address/0x32C074317C86318f5a41137E64AEf611324CA9A9) | Live (verified) |
+| GridlockGovernance | [`0x124cA42770B8DDcD8e6a9D2EF5201c0b0165eE4E`](https://robinhoodchain.blockscout.com/address/0x124cA42770B8DDcD8e6a9D2EF5201c0b0165eE4E) | Live |
 
 ## Router integration
 
 After deploy, set addresses on the [router](https://github.com/Gridlockcompute/router):
 
 ```env
-EVM_WORKER_REGISTRY=0x...
-EVM_JOB_ROUTER=0x...
-EVM_FEE_COLLECTOR=0x...
-EVM_ATTESTATION=0x...
-EVM_GRID_STAKING=0x...
-EVM_GOVERNANCE=0x...
+EVM_GRID_TOKEN=0x62537c09a874cfe886e052d5afcd28356a98e549
+EVM_WORKER_REGISTRY=0xC3F9E16d21F88DC5a7d89317EEC0e1c62206E1Cb
+EVM_JOB_ROUTER=0xfEEa8b7b2B90CE699238c23a03f0607972150446
+EVM_FEE_COLLECTOR=0x2604413db30ef67f28dc50e88daBfC89d6F1f4e0
+EVM_ATTESTATION=0xD82dC78E2B2B079820E54513bEf4F6649c15b2dA
+EVM_GRID_STAKING=0x32C074317C86318f5a41137E64AEf611324CA9A9
+EVM_GOVERNANCE=0x124cA42770B8DDcD8e6a9D2EF5201c0b0165eE4E
 
 # Enable gradually after validation
+GRID_STAKING_ONCHAIN_ENABLED=true
 EVM_SETTLEMENT_ENABLED=false
 WORKER_REGISTRY_ONCHAIN_ENABLED=false
 JOB_ROUTER_ONCHAIN_ENABLED=false
-GRID_STAKING_ONCHAIN_ENABLED=false
 EVM_ATTESTATION_ENABLED=false
 CHAIN_INDEXER_ENABLED=false
 ```
